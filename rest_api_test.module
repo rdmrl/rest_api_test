@@ -1,0 +1,199 @@
+<?php
+
+/**
+ * A module to test a REST API endpoint. 
+ *
+ * Creates a menu link and a page that displays a dynamic form.
+ */
+
+/**
+ * Implements hook_menu().
+ *
+ * Creates a new menu item to access the test form.
+ */
+function rest_api_test_menu() {
+  $items = array();
+
+  $items['rest_api_test/form'] = array(
+    'title' => 'REST API Test Form',
+    'description' => 'A dynamic form whose structure is read from the REST API.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('rest_api_test_form'),
+    'access callback' => TRUE
+  );
+
+  return $items;
+}
+
+/**
+ * Builds the form based on the response data from remote.
+ */
+function rest_api_test_form($form, $form_state) {
+
+  // Get the response data from the remote server.
+  $response_data = get_form_details_from_remote();
+
+  if(!empty($response_data)) {
+
+    // Parse the json response. Since there is embedded json, unescape it.
+    $php_json = drupal_json_decode($response_data, JSON_UNESCAPED_SLASHES);
+
+    $form = array();
+    $form_name = '';
+
+    if(!empty($php_json)) {
+
+      // Get teh formMain values.
+      if(isset($php_json['formMain']['value'])) {
+        $form_main = $php_json['formMain']['value'];
+
+        // Parse the form main json.
+        $php_form_main = drupal_json_decode($form_main);
+        $form_name = $php_form_main['formName'];
+
+        // Store the name of the form. To be used later.
+        $form['#form_name'] = $form_name;
+
+        // Parse the form field data.
+        $form_field = $php_json['formField']['value'];
+        $php_form_field = drupal_json_decode($form_field);
+
+        // Process the fields in each of the modules and build the form.
+        $form += build_form_fields('firstModule', $php_form_field['firstModule'], $php_form_field['firstField']);
+        $form += build_form_fields('secondModule', $php_form_field['secondModule'], $php_form_field['secondField']);
+        $form += build_form_fields('thirdModule', $php_form_field['thirdModule'], $php_form_field['thirdField']);
+
+        $form['submit'] = array(
+          '#type' => 'submit',
+          '#value' => t('Submit')
+        );
+      }
+    }
+  }
+
+  return $form;
+}
+
+/**
+ * Helper function to build the form fields for a single module.
+ *
+ * @param $module_name string.
+ *           the name of the module
+ * @param $module_label string.
+ **          the display label for the module
+ * @param $fields array.
+ *           the list of fields in this module
+ * 
+ * @return array the partial form for the module.
+ */
+function build_form_fields($module_name, $module_label, $fields) {
+
+  $form = array();
+
+  // Create a fieldset for the module to group all its fields.
+  $form[$module_name] = array(
+    '#type' => 'fieldset',
+    '#title' => $module_label,
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE
+  );
+
+  // Process each of the fields and add to the fieldset.
+  foreach ($fields as $ix => $field) {
+    $form[$module_name][$ix] = build_field($field);
+  }
+
+  return $form;
+}
+
+/**
+ * Helper function to build the form field attributes.
+ *
+ * @param $field array
+ *           the field definition from remote.
+ *
+ * @return array the field attributes.
+ */
+function build_field($field) {
+
+  $output = array(
+    '#title' => $field['label']
+  );
+
+  // Build the attributes based on the field type.
+  $output += get_field_specific_data($field);
+
+  // Set the initial field value if it exsits.
+  if(!empty($field['firstname'])) {
+    $output['#default_value'] = $field['firstname'];
+  }
+
+  return $output;
+}
+
+/**
+ * Helper function to add attributes based on field type.
+ *
+ * @param $field array.
+ *          the field definition from remote.
+ *
+ * @return array a partial list of field attributes.
+ */
+function get_field_specific_data($field) {
+
+  $ret = array();
+
+  switch($field['type']) {
+    case 'phone':
+    case 'email':
+    case 'date':
+    case 'datetime':
+    case 'text':
+      $ret['#type'] = 'textfield';
+      break;
+
+    case 'option':
+      $ret['#type'] = 'select';
+      if(isset($field['optionValue'])) {
+        $options_list = array();
+        foreach($field['optionValue'] as $option) {
+          $options_list[$option] = $option;
+        }
+        $ret['#options'] = $options_list;
+      }
+      break;
+
+  }
+
+  return $ret;
+}
+
+/**
+ * Sends a request to the remote server to get the form details.
+ *
+ * @return array the response data.
+ */
+function get_form_details_from_remote() {
+
+  // Add basic auth to URL.
+  $remote_url = "http://2test:2test@rfbdwn0yjw4ggoox.myfritz.net:88/engine-rest/task/b6e3d92f-5d81-11e8-82ef-d053495cfc87/variables?deserializeValues=false";
+
+  $response = drupal_http_request($remote_url, array());
+
+  $response_data = null;
+
+  if ($response->code) {
+    switch ($response->code) {
+      case '200':
+        $response_data = $response->data;
+        break;
+
+      case '404':
+      case '500':
+        break;
+    }
+  }
+
+  return $response_data;
+}
+

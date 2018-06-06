@@ -1,0 +1,4 @@
+description = "A module to test a REST API."
+name = "REST API Test"
+core = "7.x"
+version = "1.0"
