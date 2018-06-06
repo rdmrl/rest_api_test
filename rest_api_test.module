@@ -1,5 +1,4 @@
 <?php
-
 /**
  * A module to test a REST API endpoint. 
  *
@@ -80,7 +79,7 @@ function rest_api_test_form($form, $form_state) {
  * @param $module_name string.
  *           the name of the module
  * @param $module_label string.
- **          the display label for the module
+ *           the display label for the module
  * @param $fields array.
  *           the list of fields in this module
  * 
@@ -176,7 +175,7 @@ function get_field_specific_data($field) {
 function get_form_details_from_remote() {
 
   // Add basic auth to URL.
-  $remote_url = "http://2test:2test@rfbdwn0yjw4ggoox.myfritz.net:88/engine-rest/task/b6e3d92f-5d81-11e8-82ef-d053495cfc87/variables?deserializeValues=false";
+  $remote_url = "http://rfbdwn0yjw4ggoox.myfritz.net:88/engine-rest/task/b6e3d92f-5d81-11e8-82ef-d053495cfc87/variables?deserializeValues=false";
 
   $response = drupal_http_request($remote_url, array());
 
