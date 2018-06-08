@@ -57,10 +57,30 @@ function rest_api_test_form($form, $form_state) {
         $form_field = $php_json['formField']['value'];
         $php_form_field = drupal_json_decode($form_field);
 
-        // Process the fields in each of the modules and build the form.
-        $form += build_form_fields('firstModule', $php_form_field['firstModule'], $php_form_field['firstField']);
-        $form += build_form_fields('secondModule', $php_form_field['secondModule'], $php_form_field['secondField']);
-        $form += build_form_fields('thirdModule', $php_form_field['thirdModule'], $php_form_field['thirdField']);
+        $option_lists = get_options($php_form_field);
+
+        // Build the form groups using fieldsets.
+        foreach ($option_lists['modules'] as $ix => $group) {
+          $form[$group] = build_form_fieldset($group);
+        }
+
+        $form['Other'] = build_form_fieldset('Other');
+
+        $form_mappings = $php_json['formMainMappings']['value'];
+        if (!empty($form_mappings)) {
+
+          $php_form_mappings = drupal_json_decode($form_mappings);
+          foreach ($php_form_mappings as $form_mapping) {
+            $crm_module = $form_mapping['crmModule'];
+            if (isset($crm_module)) {
+              $field_name = $form_mapping['formField'];
+              $form[$crm_module][$field_name] = build_field($form_mapping, $option_lists['options']);
+            } else {
+              $field_name = $form_mapping['formField'];
+              $form['Other'][$field_name] = build_field($form_mapping, $option_lists['options']);
+            }
+          }
+        }
 
         $form['submit'] = array(
           '#type' => 'submit',
@@ -69,6 +89,28 @@ function rest_api_test_form($form, $form_state) {
       }
     }
   }
+
+  return $form;
+}
+
+/**
+ * Helper function to build the form fields for a single module.
+ *
+ * @param $module_name string.
+ *           the name of the module
+ * @param $module_label string.
+ *           the display label for the module
+ * @param $fields array.
+ *           the list of fields in this module
+ * 
+ * @return array the partial form for the module.
+ */
+function build_form_field_from_mapping($field_mapping) {
+
+  $form = array();
+
+  // Process the field and add to the fieldset.
+  $form[$crm_module][$field_name] = build_field($field_mapping);
 
   return $form;
 }
@@ -106,25 +148,48 @@ function build_form_fields($module_name, $module_label, $fields) {
 }
 
 /**
+ * Helper function to build a fieldset for a module.
+ *
+ * @param $title string
+ *           the title of the fieldset.
+ *
+ * @return $fieldset array.
+ *           the fieldset definition.
+ */
+function build_form_fieldset($title) {
+  // Create a fieldset for the module to group all its fields.
+  $fieldset = array(
+    '#type' => 'fieldset',
+    '#title' => $title,
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE
+  );
+
+  return $fieldset;
+}
+
+/**
  * Helper function to build the form field attributes.
  *
  * @param $field array
  *           the field definition from remote.
+ * @param $option_lists
+ *           the list of options to fill the select.
  *
  * @return array the field attributes.
  */
-function build_field($field) {
+function build_field($field, $option_lists) {
 
   $output = array(
-    '#title' => $field['label']
+    '#title' => $field['formField']
   );
 
   // Build the attributes based on the field type.
-  $output += get_field_specific_data($field);
+  $output += get_field_specific_data($field, $option_lists);
 
   // Set the initial field value if it exsits.
-  if(!empty($field['firstname'])) {
-    $output['#default_value'] = $field['firstname'];
+  if(!empty($field['crmFieldValue'])) {
+    $output['#default_value'] = $field['crmFieldValue'];
   }
 
   return $output;
@@ -135,33 +200,55 @@ function build_field($field) {
  *
  * @param $field array.
  *          the field definition from remote.
+ * @param $option_lists
+ *           the list of options to fill the select.
  *
  * @return array a partial list of field attributes.
  */
-function get_field_specific_data($field) {
+function get_field_specific_data($field, $option_lists) {
 
   $ret = array();
 
-  switch($field['type']) {
-    case 'phone':
-    case 'email':
-    case 'date':
-    case 'datetime':
+  switch($field['fieldAssignment']) {
     case 'text':
       $ret['#type'] = 'textfield';
+      $ret['#size'] = '40';
+      break;
+
+    case 'phone':
+      $ret['#type'] = 'textfield';
+      $ret['#size'] = '40';
+      break;
+
+    case 'email':
+      $ret['#type'] = 'textfield';
+      $ret['#size'] = '30';
+      break;
+
+    case 'date':
+      $ret['#type'] = 'date_popup';
+      $ret['#date_format'] = 'M d Y';
+      $ret['#size'] = '20';
+      break;
+
+    case 'datetime':
+      $ret['#type'] = 'date_popup';
+      $ret['#date_type'] = DATE_DATETIME;
+      $ret['#date_format'] = 'm/d/Y h:i a';
+      $ret['#date_increment'] = 1;
+      $ret['#size'] = '20';
       break;
 
     case 'option':
       $ret['#type'] = 'select';
-      if(isset($field['optionValue'])) {
-        $options_list = array();
-        foreach($field['optionValue'] as $option) {
-          $options_list[$option] = $option;
-        }
-        $ret['#options'] = $options_list;
-      }
-      break;
 
+      $options = $option_lists[$field['formField']];
+
+      if(!empty($options)) {
+        $ret['#options'] = $options;
+      }
+
+      break;
   }
 
   return $ret;
@@ -175,7 +262,7 @@ function get_field_specific_data($field) {
 function get_form_details_from_remote() {
 
   // Add basic auth to URL.
-  $remote_url = "http://rfbdwn0yjw4ggoox.myfritz.net:88/engine-rest/task/b6e3d92f-5d81-11e8-82ef-d053495cfc87/variables?deserializeValues=false";
+  $remote_url = "http://2test:2test@rfbdwn0yjw4ggoox.myfritz.net:88/engine-rest/task/b6e3d92f-5d81-11e8-82ef-d053495cfc87/variables?deserializeValues=false";
 
   $response = drupal_http_request($remote_url, array());
 
@@ -193,6 +280,60 @@ function get_form_details_from_remote() {
     }
   }
 
+  // dd($response_data, 'response');
   return $response_data;
 }
 
+function get_options($form_field) {
+
+  $modules = array();
+  $option_lists = array();
+
+  foreach ($form_field as $key => $value) {
+    if (strpos($key, 'Module') !== FALSE) {
+      // This is a module definition.
+      $modules[] = $value;
+    } else if (strpos($key, 'Field') !== FALSE) {
+
+      // This is a field list definition.
+
+      // Process each of the fields.
+      foreach ($value as $field) {
+        if ($field['type'] == 'option') {
+
+          $options = array('0' => 'Select One');
+
+          foreach ($field['optionValue'] as $option) {
+            $value = process_option($field['label'], $option);
+            $options[$value] = $option;
+          }
+
+          $option_lists[$field['label']] = $options;
+        }
+      }
+    }
+  } // foreach
+
+  return array(
+    'modules' => $modules,
+    'options' => $option_lists
+  );
+}
+
+function process_option($field_label, $option) {
+  if ($field_label == 'pPriority') {
+
+    $parts = explode(' ', $option);
+    if (count($parts) > 1) {
+      $firstPart = array_shift($parts);
+      $value = strtolower($firstPart);
+      return $value . implode($parts);
+    } else {
+      return $option;
+    }
+  } else if ($field_label == 'pStatus') {
+    $parts = explode(' ', $option);
+    return implode('_', $parts);
+  }
+  return $option;
+}
